@@ -1,0 +1,197 @@
+/******************************************************************************
+
+                              Online C++ Compiler.
+               Code, Compile, Run and Debug C++ program online.
+Write your code in this editor and press "Run" button to compile and execute it.
+
+https://www.onlinegdb.com/online_c++_compiler
+*******************************************************************************/
+
+#include <iostream>
+#include <chrono>
+#include <random>
+#include <numeric>      // std::iota
+#include <algorithm>    // std::sort, std::stable_sort
+
+using namespace std;
+
+unsigned seed;
+std::default_random_engine generator;
+std::uniform_real_distribution<double> uniform;
+    
+enum class WeaponLevel { Third, Fourth };
+enum class Level { Normal, High, Higher };
+int Refine(int refining_level, WeaponLevel weapon_level, Level level, bool has_blessing = false);
+double* CalcRefiningRes(int num_samples, WeaponLevel weapon_level, double item_price, double normal_price, double high_price, double higher_price, double blessing_price, int refine_price, int start_refining_level, int target_refining_level, Level* levels, bool* has_blessings);
+template <typename T>
+T v_sum(const vector<T>& vec);
+template <typename T>
+double v_mean(const vector<T>& vec);
+template <typename T>
+double v_std(const vector<T>& vec);
+    
+int main()
+{
+	int num_samples = 10000;
+	WeaponLevel weapon_level = WeaponLevel::Fourth;
+    double item_price = 5000.0;
+    double normal_price = 3.5;
+    double high_price = 54.5;
+	double higher_price = 62.0;
+	double blessing_price = 263.0;
+	double refine_price = 1;
+	Level* levels =  new Level[10]{ Level::Normal, Level::Normal, Level::Normal, Level::Normal, 
+								    Level::Normal, Level::Normal, Level::High, 
+								    Level::Higher, Level::Higher, Level::High
+    };
+    bool* has_blessings = new bool[10] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 };
+	int start_refining_level = 9;
+	int target_refining_level = 10;
+    
+	// 1. init random generator
+    // seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+	seed = 0;
+    generator.seed(seed);
+	uniform.param(std::uniform_real_distribution<double>::param_type(0.0, 1.0));
+    
+	// 2. refine
+	vector<double*> vals;
+	vector<double> means;
+	vals.reserve(32);
+	means.reserve(32);
+	for (int i = 0; i < 32; i++)
+	{
+		levels[4] = i / 8 >= 3 && weapon_level == WeaponLevel::Fourth ? Level::High : Level::Normal;
+		levels[5] = i / 8 >= 2 ? Level::High : Level::Normal;
+		levels[6] = i / 8 >= 1 ? Level::High : Level::Normal;
+		levels[7] = i % 8 % 2 ? Level::Higher : Level::High;
+		levels[8] = i % 8 / 2 % 2 ? Level::Higher : Level::High;
+		levels[9] = i % 8 / 4 % 2 ? Level::Higher : Level::High;
+		has_blessings[7] = levels[7] == Level::High;
+		has_blessings[8] = levels[8] == Level::High;
+		has_blessings[9] = levels[9] == Level::High;
+		
+		double* _vals = CalcRefiningRes(num_samples, weapon_level, item_price, normal_price, high_price, higher_price, blessing_price, refine_price, start_refining_level, target_refining_level, levels, has_blessings);
+
+		vals.push_back(_vals);
+		means.push_back(_vals[0]);
+	}
+	
+	vector<size_t> idx(means.size());
+	iota(idx.begin(), idx.end(), 0);
+	stable_sort(idx.begin(), idx.end(), [&means](size_t i1, size_t i2) {return means[i1] < means[i2];});
+	
+	for (auto i: idx) 
+	{
+		string method = "NNNN";
+		if (target_refining_level >= 5) method += i / 8 >= 3 && weapon_level == WeaponLevel::Fourth ? "H" : "N";
+		if (target_refining_level >= 6) method += i / 8 >= 2 ? "H" : "N";
+		if (target_refining_level >= 7) method += i / 8 >= 1 ? "H" : "N";
+		if (target_refining_level >= 8) method += i % 8 % 2 ? "E" : "H";
+		if (target_refining_level >= 9) method += i % 8 / 2 % 2 ? "E" : "H";
+		if (target_refining_level >= 10) method += i % 8 / 4 % 2 ? "E" : "H";
+		cout << method << ", " << "cost average:" << vals[i][0] << ", cost std:" << vals[i][1] << ", " << "counts average:" << vals[i][2] << ", counts std:" << vals[i][3] << endl;
+	}
+	
+    return 0;
+}
+
+int Refine(int refining_level, WeaponLevel weapon_level, Level level, bool hasBlessing)
+{
+    double rand_val = uniform(generator);
+    double* probTable;
+    
+    if (weapon_level == WeaponLevel::Third && level == Level::Normal)
+        probTable = new double[10] {1, 1, 1, 1, 1, 0.6, 0.5, 0.2, 0.2, 0.19};
+    else if (weapon_level == WeaponLevel::Third && level != Level::Normal)
+        probTable = new double[10] {1, 1, 1, 1, 1, 0.9, 0.8, 0.4, 0.4, 0.3};
+    else if (weapon_level == WeaponLevel::Fourth && level == Level::Normal)
+        probTable = new double[10] {1, 1, 1, 1, 0.6, 0.4, 0.4, 0.2, 0.2, 0.09};
+    else if (weapon_level == WeaponLevel::Fourth && level != Level::Normal)
+        probTable = new double[10] {1, 1, 1, 1, 0.9, 0.7, 0.7, 0.4, 0.4, 0.2};
+    
+    if (rand_val < probTable[refining_level])
+        return refining_level + 1;
+    
+    if (7 <= refining_level && refining_level <= 12 && hasBlessing)
+        return refining_level;
+    if (7 <= refining_level && refining_level <= 10 && level == Level::Higher)
+        return refining_level - 1;
+    return -1;
+}
+double* CalcRefiningRes(int num_samples, WeaponLevel weapon_level, double item_price, double normal_price, double high_price, double higher_price, double blessing_price, int refine_price, int start_refining_level, int target_refining_level, Level* levels, bool* has_blessings)
+{
+	int blessing_demands[] = {0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 4};
+	double cost = 0;
+	vector<double> costs;
+	vector<int> counts;
+    
+    for (int i = 0; i < num_samples; i++)
+	{
+		cost += item_price;
+		int refining_level = start_refining_level;
+		while (refining_level != target_refining_level && refining_level != -1)
+		{
+			cost += refine_price;
+			switch (levels[refining_level])
+			{
+			case Level::Normal:
+				cost += normal_price;
+				break;
+			case Level::High:
+				cost += high_price;
+				break;
+			case Level::Higher:
+				cost += higher_price;
+				break;
+			}
+			cost += has_blessings[refining_level] * blessing_demands[refining_level] * blessing_price;
+
+			refining_level = Refine(refining_level, weapon_level, levels[refining_level], has_blessings[refining_level]);
+		}
+        if (refining_level == target_refining_level)
+		{
+			costs.push_back(cost);
+			counts.push_back(i);
+		}
+	}
+	costs[costs.size() - 1] = cost;
+	counts[counts.size() - 1] = num_samples;
+	for (int i = costs.size() - 1; i > 0; i--)
+	{
+		costs[i] -= costs[i - 1];
+		counts[i] -= counts[i - 1];
+	}
+	
+	// cout << "cost average:" << v_mean(costs) << ", cost std:" << v_std(costs) << ", ";
+	// cout << "counts average:" << v_mean(counts) << ", counts std:" << v_std(counts) << endl;
+	
+	return new double[4]{ v_mean(costs), v_std(costs), v_mean(counts), v_std(counts) };
+}
+template <typename T>
+T v_sum(const vector<T>& vec)
+{
+	T sum = 0;
+	for (auto &val : vec) // access by reference to avoid copying
+		sum += val;
+	return sum;
+}
+template <typename T>
+double v_mean(const vector<T>& vec)
+{
+	double size = vec.size();
+	double mean = 0;
+	for (auto &val : vec) // access by reference to avoid copying
+		mean += val / size;
+	return mean;
+}
+template <typename T>
+double v_std(const vector<T>& vec)
+{
+	double size = vec.size();
+	double mean = v_mean(vec);
+	double std = 0;
+	for (auto &val : vec) // access by reference to avoid copying
+		std += (mean - val) * (mean - val) / size;
+	return sqrt(std);
+}
